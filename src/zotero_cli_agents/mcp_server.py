@@ -6,6 +6,7 @@ import atexit
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -33,6 +34,7 @@ from zotero_cli_agents.core.writer import ZoteroWriteError, ZoteroWriter
 from zotero_cli_agents.models import Collection, Item, Note
 
 mcp = FastMCP("zotero", instructions="Read and write access to a local Zotero library")
+JsonObject = dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
@@ -1151,7 +1153,7 @@ def search(
     direction: str = "desc",
     limit: int = 50,
     library: str = "user",
-) -> dict:
+) -> JsonObject:
     """Search the Zotero library by title, author, tag, or full text.
 
     Args:
@@ -1175,7 +1177,7 @@ def list_items(
     direction: str = "desc",
     limit: int = 50,
     library: str = "user",
-) -> dict:
+) -> JsonObject:
     """List all items in the Zotero library.
 
     Args:
@@ -1189,7 +1191,7 @@ def list_items(
 
 
 @mcp.tool()
-def read(key: str, detail: str = "standard", library: str = "user") -> dict:
+def read(key: str, detail: str = "standard", library: str = "user") -> JsonObject:
     """Read full details of a Zotero item including its notes.
 
     Args:
@@ -1201,7 +1203,7 @@ def read(key: str, detail: str = "standard", library: str = "user") -> dict:
 
 
 @mcp.tool()
-def pdf(key: str, pages: str | None = None, library: str = "user") -> dict:
+def pdf(key: str, pages: str | None = None, library: str = "user") -> JsonObject:
     """Extract text from the PDF attachment of a Zotero item.
 
     Args:
@@ -1213,7 +1215,7 @@ def pdf(key: str, pages: str | None = None, library: str = "user") -> dict:
 
 
 @mcp.tool()  # type: ignore[no-redef]
-def annotations(key: str, library: str = "user") -> dict:
+def annotations(key: str, library: str = "user") -> JsonObject:
     """Extract annotations (highlights, notes, comments) from a PDF attachment.
 
     Args:
@@ -1224,7 +1226,7 @@ def annotations(key: str, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def summarize(key: str, library: str = "user") -> dict:
+def summarize(key: str, library: str = "user") -> JsonObject:
     """Get a structured summary of a Zotero item for AI consumption.
 
     Args:
@@ -1235,7 +1237,7 @@ def summarize(key: str, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def summarize_all(limit: int = 10000, library: str = "user") -> dict:
+def summarize_all(limit: int = 10000, library: str = "user") -> JsonObject:
     """Export all items with key, title, abstract, authors, tags for AI classification.
 
     Args:
@@ -1246,7 +1248,7 @@ def summarize_all(limit: int = 10000, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def export(key: str, fmt: str = "bibtex", library: str = "user") -> dict:
+def export(key: str, fmt: str = "bibtex", library: str = "user") -> JsonObject:
     """Export citation for a Zotero item.
 
     Args:
@@ -1258,7 +1260,7 @@ def export(key: str, fmt: str = "bibtex", library: str = "user") -> dict:
 
 
 @mcp.tool()
-def relate(key: str, limit: int = 20, library: str = "user") -> dict:
+def relate(key: str, limit: int = 20, library: str = "user") -> JsonObject:
     """Find items related to a given Zotero item.
 
     Args:
@@ -1270,7 +1272,7 @@ def relate(key: str, limit: int = 20, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def recent(days: int = 7, modified: bool = False, limit: int = 50, library: str = "user") -> dict:
+def recent(days: int = 7, modified: bool = False, limit: int = 50, library: str = "user") -> JsonObject:
     """Show recently added or modified items.
 
     Args:
@@ -1283,7 +1285,7 @@ def recent(days: int = 7, modified: bool = False, limit: int = 50, library: str 
 
 
 @mcp.tool()
-def note_view(key: str, library: str = "user") -> dict:
+def note_view(key: str, library: str = "user") -> JsonObject:
     """View all notes attached to a Zotero item.
 
     Args:
@@ -1294,7 +1296,7 @@ def note_view(key: str, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def tag_view(key: str, library: str = "user") -> dict:
+def tag_view(key: str, library: str = "user") -> JsonObject:
     """View tags for a Zotero item.
 
     Args:
@@ -1305,7 +1307,7 @@ def tag_view(key: str, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def collection_list(library: str = "user") -> dict:
+def collection_list(library: str = "user") -> JsonObject:
     """List all collections in the Zotero library.
 
     Args:
@@ -1315,7 +1317,7 @@ def collection_list(library: str = "user") -> dict:
 
 
 @mcp.tool()
-def collection_items(collection_key: str, library: str = "user") -> dict:
+def collection_items(collection_key: str, library: str = "user") -> JsonObject:
     """List all items in a specific Zotero collection.
 
     Args:
@@ -1326,7 +1328,9 @@ def collection_items(collection_key: str, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def duplicates(strategy: str = "both", threshold: float = 0.85, limit: int = 50, library: str = "user") -> dict:
+def duplicates(
+    strategy: str = "both", threshold: float = 0.85, limit: int = 50, library: str = "user"
+) -> JsonObject:
     """Find potential duplicate items by DOI and/or title similarity.
 
     Args:
@@ -1344,7 +1348,7 @@ def duplicates(strategy: str = "both", threshold: float = 0.85, limit: int = 50,
 
 
 @mcp.tool()
-def note_add(key: str, content: str, library: str = "user") -> dict:
+def note_add(key: str, content: str, library: str = "user") -> JsonObject:
     """Add a note to a Zotero item.
 
     Args:
@@ -1356,7 +1360,7 @@ def note_add(key: str, content: str, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def note_update(note_key: str, content: str, library: str = "user") -> dict:
+def note_update(note_key: str, content: str, library: str = "user") -> JsonObject:
     """Update an existing note in the Zotero library.
 
     Args:
@@ -1368,7 +1372,7 @@ def note_update(note_key: str, content: str, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def tag_add(keys: list[str], tags: list[str], library: str = "user") -> dict:
+def tag_add(keys: list[str], tags: list[str], library: str = "user") -> JsonObject:
     """Add tags to one or more Zotero items.
 
     Args:
@@ -1380,7 +1384,7 @@ def tag_add(keys: list[str], tags: list[str], library: str = "user") -> dict:
 
 
 @mcp.tool()
-def tag_remove(keys: list[str], tags: list[str], library: str = "user") -> dict:
+def tag_remove(keys: list[str], tags: list[str], library: str = "user") -> JsonObject:
     """Remove tags from one or more Zotero items.
 
     Args:
@@ -1392,7 +1396,7 @@ def tag_remove(keys: list[str], tags: list[str], library: str = "user") -> dict:
 
 
 @mcp.tool()
-def add(doi: str | None = None, url: str | None = None, library: str = "user") -> dict:
+def add(doi: str | None = None, url: str | None = None, library: str = "user") -> JsonObject:
     """Add a new item to the Zotero library by DOI or URL.
 
     Args:
@@ -1404,7 +1408,7 @@ def add(doi: str | None = None, url: str | None = None, library: str = "user") -
 
 
 @mcp.tool()
-def delete(keys: list[str], library: str = "user") -> dict:
+def delete(keys: list[str], library: str = "user") -> JsonObject:
     """Delete one or more items from the Zotero library (move to trash).
 
     Args:
@@ -1417,7 +1421,7 @@ def delete(keys: list[str], library: str = "user") -> dict:
 @mcp.tool()
 def update(
     key: str, title: str | None = None, date: str | None = None, fields: dict | None = None, library: str = "user"
-) -> dict:
+) -> JsonObject:
     """Update item metadata. Pass title/date directly or use fields dict for arbitrary fields.
 
     Args:
@@ -1440,7 +1444,7 @@ def update(
 
 
 @mcp.tool()
-def collection_create(name: str, parent_key: str | None = None, library: str = "user") -> dict:
+def collection_create(name: str, parent_key: str | None = None, library: str = "user") -> JsonObject:
     """Create a new collection in the Zotero library.
 
     Args:
@@ -1452,7 +1456,7 @@ def collection_create(name: str, parent_key: str | None = None, library: str = "
 
 
 @mcp.tool()
-def collection_move(item_key: str, collection_key: str, library: str = "user") -> dict:
+def collection_move(item_key: str, collection_key: str, library: str = "user") -> JsonObject:
     """Move an item to a collection. Requires API credentials.
 
     Args:
@@ -1464,7 +1468,7 @@ def collection_move(item_key: str, collection_key: str, library: str = "user") -
 
 
 @mcp.tool()
-def collection_delete(collection_key: str, library: str = "user") -> dict:
+def collection_delete(collection_key: str, library: str = "user") -> JsonObject:
     """Delete a collection from the Zotero library. Requires API credentials.
 
     Args:
@@ -1475,7 +1479,7 @@ def collection_delete(collection_key: str, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def collection_rename(collection_key: str, new_name: str, library: str = "user") -> dict:
+def collection_rename(collection_key: str, new_name: str, library: str = "user") -> JsonObject:
     """Rename a collection in the Zotero library. Requires API credentials.
 
     Args:
@@ -1487,7 +1491,7 @@ def collection_rename(collection_key: str, new_name: str, library: str = "user")
 
 
 @mcp.tool()
-def collection_reorganize(plan: dict, library: str = "user") -> dict:
+def collection_reorganize(plan: dict, library: str = "user") -> JsonObject:
     """Batch create collections and move items based on a reorganization plan.
 
     The plan should have this structure:
@@ -1504,7 +1508,7 @@ def collection_reorganize(plan: dict, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def trash_list(limit: int = 50, library: str = "user") -> dict:
+def trash_list(limit: int = 50, library: str = "user") -> JsonObject:
     """List items currently in the Zotero trash.
 
     Args:
@@ -1515,7 +1519,7 @@ def trash_list(limit: int = 50, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def trash_restore(key: str, library: str = "user") -> dict:
+def trash_restore(key: str, library: str = "user") -> JsonObject:
     """Restore a trashed item back to the Zotero library.
 
     Args:
@@ -1526,7 +1530,7 @@ def trash_restore(key: str, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def attach(parent_key: str, file_path: str, library: str = "user") -> dict:
+def attach(parent_key: str, file_path: str, library: str = "user") -> JsonObject:
     """Upload a file attachment to an existing Zotero item.
 
     Args:
@@ -1538,7 +1542,7 @@ def attach(parent_key: str, file_path: str, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def add_from_pdf(file_path: str, doi_override: str | None = None, library: str = "user") -> dict:
+def add_from_pdf(file_path: str, doi_override: str | None = None, library: str = "user") -> JsonObject:
     """Add an item from a local PDF by extracting its DOI, then attach the PDF.
 
     Note: The Zotero Web API creates bare items (DOI only). Sync with Zotero desktop
@@ -1558,7 +1562,7 @@ def add_from_pdf(file_path: str, doi_override: str | None = None, library: str =
 
 
 @mcp.tool()
-def workspace_new(name: str, description: str = "") -> dict:
+def workspace_new(name: str, description: str = "") -> JsonObject:
     """Create a new local workspace for organizing papers by topic.
 
     Args:
@@ -1569,7 +1573,7 @@ def workspace_new(name: str, description: str = "") -> dict:
 
 
 @mcp.tool()
-def workspace_delete(name: str) -> dict:
+def workspace_delete(name: str) -> JsonObject:
     """Delete a workspace.
 
     Args:
@@ -1579,7 +1583,7 @@ def workspace_delete(name: str) -> dict:
 
 
 @mcp.tool()
-def workspace_add(name: str, keys: list[str], library: str = "user") -> dict:
+def workspace_add(name: str, keys: list[str], library: str = "user") -> JsonObject:
     """Add Zotero items to a workspace by key.
 
     Args:
@@ -1591,7 +1595,7 @@ def workspace_add(name: str, keys: list[str], library: str = "user") -> dict:
 
 
 @mcp.tool()
-def workspace_remove(name: str, keys: list[str]) -> dict:
+def workspace_remove(name: str, keys: list[str]) -> JsonObject:
     """Remove items from a workspace by key.
 
     Args:
@@ -1602,13 +1606,13 @@ def workspace_remove(name: str, keys: list[str]) -> dict:
 
 
 @mcp.tool()
-def workspace_list() -> dict:
+def workspace_list() -> JsonObject:
     """List all local workspaces with their descriptions and item counts."""
     return _handle_workspace_list()
 
 
 @mcp.tool()
-def workspace_show(name: str, limit: int = 50, library: str = "user") -> dict:
+def workspace_show(name: str, limit: int = 50, library: str = "user") -> JsonObject:
     """Show items in a workspace with full metadata from Zotero.
 
     Args:
@@ -1620,7 +1624,7 @@ def workspace_show(name: str, limit: int = 50, library: str = "user") -> dict:
 
 
 @mcp.tool()
-def workspace_export(name: str, fmt: str = "markdown", library: str = "user") -> dict:
+def workspace_export(name: str, fmt: str = "markdown", library: str = "user") -> JsonObject:
     """Export workspace items in markdown, JSON, or BibTeX format.
 
     Args:
@@ -1638,7 +1642,7 @@ def workspace_import(
     tag: str | None = None,
     search_query: str | None = None,
     library: str = "user",
-) -> dict:
+) -> JsonObject:
     """Bulk import items into a workspace from a collection, tag, or search query.
 
     Args:
@@ -1652,7 +1656,7 @@ def workspace_import(
 
 
 @mcp.tool()
-def workspace_search(name: str, query: str, limit: int = 50, library: str = "user") -> dict:
+def workspace_search(name: str, query: str, limit: int = 50, library: str = "user") -> JsonObject:
     """Search items within a workspace by title, author, abstract, or tags.
 
     Args:
@@ -1665,7 +1669,7 @@ def workspace_search(name: str, query: str, limit: int = 50, library: str = "use
 
 
 @mcp.tool()
-def workspace_index(name: str, force: bool = False, library: str = "user") -> dict:
+def workspace_index(name: str, force: bool = False, library: str = "user") -> JsonObject:
     """Build or update RAG index for a workspace (BM25 + optional embeddings).
 
     Indexes metadata and PDF full text for natural language querying.
@@ -1679,7 +1683,7 @@ def workspace_index(name: str, force: bool = False, library: str = "user") -> di
 
 
 @mcp.tool()
-def workspace_query(name: str, question: str, top_k: int = 5, mode: str = "auto") -> dict:
+def workspace_query(name: str, question: str, top_k: int = 5, mode: str = "auto") -> JsonObject:
     """Query workspace papers with natural language using RAG retrieval.
 
     Returns ranked chunks from indexed papers matching the question.
@@ -1699,7 +1703,7 @@ def workspace_query(name: str, question: str, top_k: int = 5, mode: str = "auto"
 
 
 @mcp.tool()
-def cite(key: str, style: str = "apa", library: str = "user") -> dict:
+def cite(key: str, style: str = "apa", library: str = "user") -> JsonObject:
     """Format a citation for a Zotero item in APA, Nature, or Vancouver style.
 
     Args:
@@ -1711,7 +1715,7 @@ def cite(key: str, style: str = "apa", library: str = "user") -> dict:
 
 
 @mcp.tool()
-def stats(library: str = "user") -> dict:
+def stats(library: str = "user") -> JsonObject:
     """Show library statistics: total items, PDFs, notes, types, collections, top tags.
 
     Args:
@@ -1727,7 +1731,7 @@ def update_status(
     limit: int = 50,
     apply: bool = False,
     library: str = "user",
-) -> dict:
+) -> JsonObject:
     """Check if preprints (arXiv, bioRxiv, medRxiv) have been formally published.
 
     Uses the Semantic Scholar API to look up publication status.

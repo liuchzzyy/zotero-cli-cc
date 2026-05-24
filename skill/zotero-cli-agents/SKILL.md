@@ -127,7 +127,7 @@ zot collection delete COLLECTIONKEY
 zot --json duplicates                # Find duplicates (DOI + title matching)
 zot --json duplicates --by title     # Title-only matching
 zot --json recent --days 7           # Recently added items
-zot --json recent --sort dateModified
+zot --json recent --modified         # Recently modified items
 zot --json trash list                # View trashed items
 zot trash restore ITEMKEY            # Restore from trash
 ```

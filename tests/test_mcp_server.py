@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 mcp = pytest.importorskip("mcp", reason="mcp not installed")
+from mcp import types  # noqa: E402
 
 from zotero_cli_agents.models import (  # noqa: E402
     Attachment,
@@ -105,6 +106,38 @@ class TestCollectionToDict:
         assert d["name"] == "My Collection"
         assert len(d["children"]) == 1
         assert d["children"][0]["key"] == "CHILD1"
+
+
+class TestStructuredToolOutput:
+    def test_search_tool_declares_output_schema(self):
+        from zotero_cli_agents import mcp_server
+
+        tool = mcp_server.mcp._tool_manager.get_tool("search")
+        assert tool is not None
+        assert tool.output_schema is not None
+
+    @pytest.mark.anyio
+    @patch("zotero_cli_agents.mcp_server._get_reader")
+    async def test_lowlevel_call_tool_populates_structured_content(self, mock_get_reader):
+        from zotero_cli_agents import mcp_server
+
+        reader = MagicMock()
+        reader.search.return_value = SearchResult(items=[_make_item()], total=1, query="test")
+        mock_get_reader.return_value = reader
+
+        handler = mcp_server.mcp._mcp_server.request_handlers[types.CallToolRequest]
+        request = types.CallToolRequest(
+            params=types.CallToolRequestParams(name="search", arguments={"query": "test", "limit": 1})
+        )
+
+        result = await handler(request)
+        call_result = result.root
+
+        assert isinstance(call_result, types.CallToolResult)
+        assert call_result.structuredContent is not None
+        assert call_result.structuredContent["total"] == 1
+        assert call_result.structuredContent["query"] == "test"
+        assert call_result.content[0].type == "text"
 
 
 # ---------------------------------------------------------------------------

@@ -157,6 +157,15 @@ class TestSchemaCommand:
         assert env["meta"]["schema_version"]
         assert env["meta"]["cli_version"]
 
+    def test_recent_schema_does_not_advertise_sort_flags(self):
+        result = _run(["schema", "recent"])
+        assert result.exit_code == EXIT_OK
+        env = json.loads(result.output)
+        flags = {flag for param in env["data"]["params"] for flag in param.get("flags", [])}
+        assert "--modified" in flags
+        assert "--sort" not in flags
+        assert "--direction" not in flags
+
 
 class TestSchemaDiff:
     def _write(self, tmp_path, data, meta=None):
