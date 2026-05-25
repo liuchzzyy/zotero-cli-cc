@@ -39,3 +39,70 @@
 执行时必须给出实时进度：查询 DOI 重复项、构建 keep/delete 计划、每个重复组的 keep/delete 判断；正式删除时还要报告批次编号、已删除数、失败数、总体百分比。
 先执行默认 dry-run 看 keep/delete 计划；我确认后，再加 -Apply 正式删除。
 ```
+
+## Batch AI Note Analysis
+
+### 推荐给代理的直接提示词
+```text
+使用 E:\Desktop\CodingDaily\zotero-cli-agents\scripts\run-ai-note-batch.ps1 批量生成 Zotero AI note，不要手动拼长命令逐条跑。
+
+目标：
+对尚未带有 update/AInote 的非书籍条目，读取所有本地 PDF 附件，使用 MinerU 抽取 Markdown 和图片，经 CLIProxyAPI 的 gpt-5.5 生成“AI条目分析 - <title>”note，写回 Zotero Web API，并给父条目打 tag update/AInote。
+
+默认命令：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -BatchSize 3
+
+先验证候选条目时用 dry-run：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -DryRun -BatchSize 3 -ScanLimit 100
+
+只处理指定条目时用：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -Keys VH4PXB5G -BatchSize 1
+
+边界和跳过规则：
+- 已有 update/AInote 的父条目默认完全跳过，不重复生成 note。
+- 同一个 output/checkpoint 中已经 tagged 的条目也跳过；这是为了避免 Zotero Web API 写入后，本地 SQLite 尚未同步导致重复处理。
+- book 和 bookSection 跳过；当前不做书籍 AI 分析。
+- 无 PDF、PDF 路径缺失、PDF 超过 max PDF 大小、MinerU 抽取失败、AI 分类 uncertain、AI 调用失败、Zotero 写入失败，都不打 update/AInote，便于下次继续。
+- Zotero 读操作来自本地 SQLite；写 note/tag 通过 Zotero Web API。写入成功后需要 Zotero 同步，本地数据库才会看到新 note 和 tag。
+
+模型和图片边界：
+- 默认使用 CLIProxyAPI: http://127.0.0.1:8317/v1，模型 gpt-5.5，模式 mineru-markdown-images。
+- CLIProxyAPI 的 gpt-5.5 已验证可以读取 image_url/base64 图片。
+- DeepSeek deepseek-v4-pro 不支持 image_url 图片；如果切到 DeepSeek，只能用 mineru-text，不能使用 mineru-markdown-images。
+- 不要把 MinerU Markdown 里的本地图片路径直接当作可读图片；脚本会把 MinerU 输出图片转成 base64 data URL 后发送给支持视觉的模型。
+- 默认每个条目最多发送 24 张 MinerU 图片，避免请求过大。必要时可调整 -MaxImages，但不要无上限发送全部图片。
+
+实时进度要求：
+- 运行时必须保留终端输出，不要静默后台运行。
+- 进度中应能看到扫描、跳过原因、MinerU upload/process/download、classify、analyze、note、tag、done、summary。
+- 每批都会写 logs\batch-XXX.log；如果长时间停在 MinerU process 或 AI analyze，先看当前 batch log，不要盲目重启全量。
+
+中间文件和清理：
+- 默认输出目录为 .workspace\ai-note-analysis-batch-YYYYMMDD-HHMMSS。
+- 保留 notes\*.md、notes\*.html、results.json、failures.json、summary.json、preview.json、checkpoint.json、logs\batch-*.log。
+- 成功批次后脚本会自动删除 mineru-assets 中间目录，避免图片和 MinerU ZIP 解包文件长期占用空间。
+- 如果某批失败，mineru-assets 会保留用于诊断；排查完成后可手动删除对应 output 目录下的 mineru-assets。
+- 如果需要审查 MinerU 原始 Markdown/图片，加 -NoCleanIntermediate 保留中间文件。
+- 不要删除 checkpoint.json；批量处理中断后继续使用同一个 -OutputDir 才能避免重复处理已写入但本地尚未同步的条目。
+
+失败恢复：
+- 如果失败在 MinerU 上传/下载，优先原 output 目录重跑；已缓存的 MinerU 资产会被复用，除非加 -RefreshMineruCache。
+- 如果失败在 AI 调用，检查 CLIProxyAPI 是否运行、/v1/models 是否可用、模型是否支持图片。
+- 如果失败在 Zotero 写入，检查 ZOT_API_KEY / ZOT_LIBRARY_ID 和 Web API 权限，不要写本地 zotero.sqlite。
+- 如果某批有 failures，默认停止并保留中间文件；不要立即用 -Force 全量重跑。
+```
+
+### 常用参数
+```powershell
+# 小批量正式运行，推荐默认
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -BatchSize 3
+
+# 保留 MinerU 中间 Markdown 和图片，便于检查
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -BatchSize 1 -NoCleanIntermediate
+
+# 复用同一个输出目录继续跑，避免本地 Zotero 未同步时重复
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -BatchSize 3 -OutputDir .workspace\ai-note-analysis-batch-YYYYMMDD-HHMMSS
+
+# 切到 DeepSeek 时只能用文本模式，不要使用 mineru-markdown-images
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -BatchSize 3 -Model deepseek-v4-pro -BaseUrl https://api.deepseek.com -PdfInputMode mineru-text
+```

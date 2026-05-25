@@ -10,6 +10,7 @@ import zipfile
 from abc import ABC, abstractmethod
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 from hashlib import sha1
 from pathlib import Path
 from threading import Lock
@@ -22,6 +23,13 @@ class PdfExtractionError(Exception):
     """Raised when PDF text extraction fails."""
 
     pass
+
+
+@dataclass
+class MinerUAssetExtraction:
+    markdown: str
+    output_dir: Path
+    image_paths: list[Path]
 
 
 class BasePdfExtractor(ABC):
@@ -177,6 +185,7 @@ class MinerUExtractor(BasePdfExtractor):
     _API_BASE = "https://mineru.net/api/v4"
     _RATE_LIMIT = 50
     _RATE_WINDOW = 60.0
+    _UPLOAD_TIMEOUT = 600
 
     def __init__(self, config_token: str | None = None) -> None:
         self._session = Session()
@@ -235,7 +244,7 @@ class MinerUExtractor(BasePdfExtractor):
                     lambda: self._session.put(
                         upload_url,
                         data=f,
-                        timeout=120,
+                        timeout=self._UPLOAD_TIMEOUT,
                     )
                 )
                 if resp.status_code not in (200, 201):
@@ -311,17 +320,31 @@ class MinerUExtractor(BasePdfExtractor):
         zip_url: str,
         progress_callback: Callable[[int, int], None] | None = None,
     ) -> str:
+        zip_data = self._download_zip(zip_url)
+        with zipfile.ZipFile(zip_data) as zf:
+            raw_md = _read_full_markdown(zf)
+        return _clean_markdown_images(raw_md)
+
+    def _download_zip(self, zip_url: str) -> io.BytesIO:
         headers = {"Authorization": f"Bearer {self.token}"}
         self._rate_limiter.acquire()
         resp = _retry_with_backoff(lambda: self._session.get(zip_url, headers=headers, timeout=300, stream=True))
         if resp.status_code != 200:
             raise PdfExtractionError(f"Failed to download ZIP: {resp.status_code} {resp.text}")
-        zip_data = io.BytesIO(resp.content)
+        return io.BytesIO(resp.content)
+
+    def _download_and_extract_assets(
+        self,
+        zip_url: str,
+        output_dir: Path,
+    ) -> MinerUAssetExtraction:
+        zip_data = self._download_zip(zip_url)
+        output_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(zip_data) as zf:
-            if "full.md" not in zf.namelist():
-                raise PdfExtractionError(f"full.md not found in ZIP: {zf.namelist()}")
-            raw_md = zf.read("full.md").decode("utf-8", errors="replace")
-        return _clean_markdown_images(raw_md)
+            raw_md = _read_full_markdown(zf)
+            _safe_extract_zip(zf, output_dir)
+        image_paths = _find_image_paths(output_dir)
+        return MinerUAssetExtraction(markdown=raw_md, output_dir=output_dir, image_paths=image_paths)
 
     def _split_pdf(self, pdf_path: Path, max_pages: int) -> list[Path]:
         doc = pymupdf.open(str(pdf_path))
@@ -372,6 +395,31 @@ class MinerUExtractor(BasePdfExtractor):
                 progress_callback("download", done, total, 0)
 
         return self._download_and_extract(zip_url, download_progress)
+
+    def _extract_single_assets(
+        self,
+        pdf_path: Path,
+        output_dir: Path,
+        progress_callback: Callable[[str, int, int, int], None] | None = None,
+    ) -> MinerUAssetExtraction:
+        file_name = self._remote_file_name(pdf_path)
+        data_id = os.path.splitext(file_name)[0]
+
+        def upload_progress(done: int) -> None:
+            if progress_callback:
+                progress_callback("upload", done, 1, 0)
+
+        batch_id, [zip_url] = self._upload_batch([(pdf_path, file_name, data_id)], upload_progress)
+
+        def poll_progress(done: int, total: int) -> None:
+            if progress_callback:
+                progress_callback("process", done, total, 0)
+
+        zip_url = self._poll_results(batch_id, poll_progress)
+
+        if progress_callback:
+            progress_callback("download", 1, 1, 0)
+        return self._download_and_extract_assets(zip_url, output_dir)
 
     def extract_text(
         self,
@@ -436,6 +484,74 @@ class MinerUExtractor(BasePdfExtractor):
                     chunk_path.unlink(missing_ok=True)
             else:
                 return self._extract_single(pdf_path, progress_callback)
+
+    def extract_markdown_assets(
+        self,
+        pdf_path: Path,
+        output_dir: Path,
+        pages: tuple[int, int] | None = None,
+        progress_callback: Callable[[str, int, int, int], None] | None = None,
+    ) -> MinerUAssetExtraction:
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF not found: {pdf_path}")
+
+        file_size = pdf_path.stat().st_size
+        if file_size > 200 * 1024 * 1024:
+            raise PdfExtractionError("PDF exceeds 200MB limit")
+
+        doc = pymupdf.open(str(pdf_path))
+        total_pages = len(doc)
+        doc.close()
+
+        if total_pages > 200:
+            if pages:
+                raise PdfExtractionError("Page range splitting not supported for PDFs >200 pages")
+            chunk_paths = self._split_pdf(pdf_path, 200)
+            total_chunks = len(chunk_paths)
+            try:
+                chunk_results: list[MinerUAssetExtraction] = []
+                for chunk_idx, chunk_path in enumerate(chunk_paths, 1):
+                    chunk_output_dir = output_dir / f"chunk-{chunk_idx:03d}"
+
+                    if progress_callback is not None:
+
+                        def make_wrapped_callback(
+                            idx: int, original: Callable[[str, int, int, int], None]
+                        ) -> Callable[[str, int, int, int], None]:
+                            def wrapped(phase: str, current: int, total: int, pages: int) -> None:
+                                original(phase, idx, total_chunks, pages)
+
+                            return wrapped
+
+                        wrapped_callback: Callable[[str, int, int, int], None] | None = make_wrapped_callback(
+                            chunk_idx, progress_callback
+                        )
+                    else:
+                        wrapped_callback = None
+                    chunk_results.append(self._extract_single_assets(chunk_path, chunk_output_dir, wrapped_callback))
+                markdown = "\n\n".join(result.markdown for result in chunk_results)
+                image_paths = [path for result in chunk_results for path in result.image_paths]
+                return MinerUAssetExtraction(markdown=markdown, output_dir=output_dir, image_paths=image_paths)
+            finally:
+                for chunk_path in chunk_paths:
+                    chunk_path.unlink(missing_ok=True)
+
+        if pages:
+            chunk_path = pdf_path.with_suffix(".pagetemp.pdf")
+            doc = pymupdf.open(str(pdf_path))
+            chunk_doc = pymupdf.open()
+            start, end = pages
+            for page_num in range(start - 1, min(end, total_pages)):
+                chunk_doc.insert_pdf(doc, from_page=page_num, to_page=page_num)
+            chunk_doc.save(str(chunk_path))
+            chunk_doc.close()
+            doc.close()
+            try:
+                return self._extract_single_assets(chunk_path, output_dir, progress_callback)
+            finally:
+                chunk_path.unlink(missing_ok=True)
+
+        return self._extract_single_assets(pdf_path, output_dir, progress_callback)
 
     def extract_text_batch(
         self,
@@ -599,6 +715,33 @@ def _retry_with_backoff(func: Any, *args: Any, **kwargs: Any) -> Any:
 
 def _clean_markdown_images(text: str) -> str:
     return re.sub(r"!\[([^\]]*)\]\([^)]+\)", r"", text)
+
+
+def _read_full_markdown(zf: zipfile.ZipFile) -> str:
+    if "full.md" in zf.namelist():
+        return zf.read("full.md").decode("utf-8", errors="replace")
+    markdown_files = [name for name in zf.namelist() if name.lower().endswith(".md")]
+    if markdown_files:
+        return zf.read(markdown_files[0]).decode("utf-8", errors="replace")
+    raise PdfExtractionError(f"Markdown file not found in ZIP: {zf.namelist()}")
+
+
+def _safe_extract_zip(zf: zipfile.ZipFile, output_dir: Path) -> None:
+    root = output_dir.resolve()
+    for member in zf.infolist():
+        if member.is_dir():
+            continue
+        target = (output_dir / member.filename).resolve()
+        if not str(target).startswith(str(root)):
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with zf.open(member) as src, target.open("wb") as dst:
+            dst.write(src.read())
+
+
+def _find_image_paths(output_dir: Path) -> list[Path]:
+    suffixes = {".png", ".jpg", ".jpeg", ".webp"}
+    return sorted(path for path in output_dir.rglob("*") if path.is_file() and path.suffix.lower() in suffixes)
 
 
 # ---------------------------------------------------------------------------
