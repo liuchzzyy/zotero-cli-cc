@@ -106,3 +106,46 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps
 # 切到 DeepSeek 时只能用文本模式，不要使用 mineru-markdown-images
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -BatchSize 3 -Model deepseek-v4-pro -BaseUrl https://api.deepseek.com -PdfInputMode mineru-text
 ```
+
+## Full Library RAG Incremental Index
+
+### 推荐给代理的直接提示词
+```text
+使用 E:\Desktop\CodingDaily\zotero-cli-agents\scripts\run-rag-full-library.ps1 为 Zotero 全库含 PDF 的父条目建立/更新 RAG 索引，不要手动逐条添加 workspace item。
+
+默认目标：
+- workspace 名称：full-library-pdf-rag
+- 条目范围：本地 Zotero SQLite 中所有“至少有一个本地存在 PDF 附件”的父条目。
+- 索引方式：先维护 workspace.toml，再调用 uv run zot workspace index full-library-pdf-rag --extractor mineru。
+- 增量规则：workspace 只新增缺失 key；RAG index 只索引尚未进入 rag.idx.sqlite 的 item key；PDF 文本抽取复用 .workspace\_cache\pdf_cache.sqlite。
+
+默认 dry-run：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-rag-full-library.ps1 -DryRun -ScanLimit 100
+
+正式增量运行：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-rag-full-library.ps1
+
+边界：
+- 默认不排除 book/bookSection，因为 RAG 的目标是“全库含 PDF”，不是 AI note 论文分析。
+- 无本地 PDF 文件的条目不进入 workspace；有 Zotero PDF 记录但本地文件缺失的条目会统计为 pdf_but_missing_local_file。
+- 现有 workspace index 的增量粒度是 item key。已索引条目的 PDF 或 metadata 后续变化不会自动重建；如果确认大量 PDF/metadata 已变更，用 -ForceRebuild 全量重建。
+- 不直接写 rag.idx.sqlite；RAG index 只通过 zot workspace index 生成，避免破坏索引结构。
+- 不删除 .workspace\_cache\pdf_cache.sqlite；这是 PDF 文本缓存，保留它才能增量复用 MinerU 抽取结果。
+
+实时进度：
+- inventory 阶段会显示 scanned/local_pdf_items/pdf_but_missing。
+- index 阶段会显示 Extracting、MinerU upload/process/download、Chunking、Indexing、Embedding 等现有 CLI 进度。
+- 所有输出同时写入 logs\inventory.log 和 logs\index.log。
+
+中间文件清理：
+- 默认会删除临时 inventory_full_pdf_workspace.py，只保留 inventory.json 和 logs。
+- inventory.json 是本次全库 PDF 清单和 pending_index 记录，建议保留。
+- 如果只想更新 workspace 不跑索引，用 -NoIndex。
+- 如果需要保留临时脚本用于排查，用 -KeepInventory。
+
+常用命令：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-rag-full-library.ps1 -DryRun -ScanLimit 500
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-rag-full-library.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-rag-full-library.ps1 -NoIndex
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-rag-full-library.ps1 -ForceRebuild
+```
