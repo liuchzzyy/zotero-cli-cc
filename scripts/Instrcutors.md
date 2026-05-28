@@ -244,7 +244,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps
 模型和图片边界：
 - 默认使用 CLIProxyAPI: http://127.0.0.1:8317/v1，模型 gpt-5.5，模式 mineru-markdown-images。
 - CLIProxyAPI 的 gpt-5.5 已验证可以读取 image_url/base64 图片。
-- DeepSeek deepseek-v4-pro 不支持 image_url 图片；如果切到 DeepSeek，只能用 mineru-text，不能使用 mineru-markdown-images。
+- DeepSeek deepseek-v4-flash 不支持 image_url 图片；如果切到 DeepSeek，只能用 mineru-text，不能使用 mineru-markdown-images。
 - 不要把 MinerU Markdown 里的本地图片路径直接当作可读图片；脚本会把 MinerU 输出图片转成 base64 data URL 后发送给支持视觉的模型。
 - 默认每个条目最多发送 24 张 MinerU 图片，避免请求过大。必要时可调整 -MaxImages，但不要无上限发送全部图片。
 
@@ -283,7 +283,71 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -BatchSize 3 -KeepLog
 
 # 切到 DeepSeek 时只能用文本模式，不要使用 mineru-markdown-images
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -BatchSize 3 -Model deepseek-v4-pro -BaseUrl https://api.deepseek.com -PdfInputMode mineru-text
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-batch.ps1 -BatchSize 3 -Model deepseek-v4-flash -BaseUrl https://api.deepseek.com -PdfInputMode mineru-text
+```
+
+## Update AI Note Citation Keywords
+
+### 推荐给代理的直接提示词
+```text
+使用 E:\Desktop\CodingDaily\zotero-cli-agents\scripts\run-ai-note-keyword-update.ps1 更新已经带有 workflow/ai_note 的父条目 citationKey，不要手动逐条改 Zotero，不要直接写 zotero.sqlite。
+
+目标：
+读取本地 Zotero SQLite 中带 workflow/ai_note 的父条目及其 AI note，对比现有 citationKey，生成统一的引用关键词，并通过 Zotero Web API 写回父条目 citationKey；写入成功后给父条目添加 tag workflow/keyword。
+
+关键词格式：
+领域/体系 | 机制/关键问题 | 性能优势/价值 | 可选先进表征方法 | 可选制备方法 | 可选理论 | 疑问：最大破绽
+
+格式规则：
+- 最终 citationKey 是纯文本，不要 Markdown 反引号，不要方括号。
+- 前三槽和最后的“疑问：”槽必填；可选先进表征方法、制备方法、理论/模型只有 AI note 中确实有时才追加，没有就不写，不要补空槽。
+- 可选槽按“先进表征方法 | 制备方法 | 理论/模型”的语义顺序追加，每类最多一个短槽，可以用逗号合并同类术语。
+- 引用关键词必须指出这篇文章最大的破绽、最弱证据、最值得追问的假设或外推风险，不要泛写“无明显破绽”。
+- 统一通用术语；例如“液态Na-K合金负极”“Na-K液态合金负极”“液态Na-K合金”“Na-K液态合金”都简写为 Na-K。
+- 具体 prompt 不再写死在 Python 中，保存在 scripts\update_ai_note_keywords_prompt.json；修改格式要求或术语统一时优先改这个 JSON。
+
+推荐 wrapper。默认不写 Zotero，只刷新 status；完整运行需要显式 -FullRun：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-keyword-update.ps1 -Status
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-keyword-update.ps1 -FullRun
+
+分步运行时用：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-keyword-update.ps1 -Generate
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-keyword-update.ps1 -RetryFailed
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-keyword-update.ps1 -DryRunApply
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-keyword-update.ps1 -Apply
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-keyword-update.ps1 -Status
+
+当前推荐模型是 deepseek-v4-flash；不要再用 deepseek-v4-pro 做这个关键词流程，pro 在本流程里明显更慢。wrapper 默认 Model=deepseek-v4-flash。如果临时用 Python 子命令，显式指定 flash：
+uv run python scripts\update_ai_note_keywords.py generate --skip-done-tag --model deepseek-v4-flash
+
+Python 子命令仍可用于调试。默认工作目录是 log\ai-note-keyword-update，不再使用 .workspace\ai-note-keyword-update：
+uv run python scripts\update_ai_note_keywords.py generate --skip-done-tag --model deepseek-v4-flash
+uv run python scripts\update_ai_note_keywords.py generate --retry-failed --batch-size 1 --model deepseek-v4-flash
+uv run python scripts\update_ai_note_keywords.py apply --dry-run
+uv run python scripts\update_ai_note_keywords.py apply --zotero-timeout 90
+uv run python scripts\update_ai_note_keywords.py status
+
+如果要临时测试另一版 prompt：
+uv run python scripts\update_ai_note_keywords.py --prompt-path scripts\update_ai_note_keywords_prompt.json generate --skip-done-tag --model deepseek-v4-flash
+或用 wrapper：
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\run-ai-note-keyword-update.ps1 -Generate -PromptPath scripts\update_ai_note_keywords_prompt.json
+
+中间文件和续跑：
+- 默认中间文件保存在 log\ai-note-keyword-update，包括 items.jsonl、generated.jsonl、updates.jsonl、applied.jsonl、failed_generation.jsonl、failed_apply.jsonl、summary.json、remaining.jsonl，以及 logs\*.log。
+- 运行时终端和 logs\*.log 会实时输出 progress/progress_label，例如 generate 353/444、apply 81/444；如果长时间不变，再检查当前 log 和模型/API 状态。
+- 如果要另开一次独立运行，用 --workspace log\ai-note-keyword-update-YYYYMMDD-HHMM；不要放到 .workspace。
+- 续跑时复用同一个 log 目录；脚本会跳过 generated.jsonl、failed_generation.jsonl、applied.jsonl、failed_apply.jsonl 中已经记录且未解决的 key。
+- 如果只想补跑生成失败的少数条目，用 wrapper 的 -RetryFailed，或 Python 的 --retry-failed --batch-size 1；不要用 --force 全量重跑。
+- 每次 generate/apply/status 都会自动刷新 summary.json 和 remaining.jsonl；先看 summary.json 的 remaining、not_applied、generation_failed_unresolved、apply_failed_unresolved，再决定下一步。generation_failed_history_total 只是历史失败记录数，不代表当前仍失败。
+- 如果 remaining.jsonl 只剩少数反复非 JSON 条目，可以读取对应 AI note 后人工整理 citationKey，追加到 generated.jsonl，再运行 apply；不要继续无意义消耗模型调用。
+- 如果 DeepSeek 返回 402 Insufficient Balance，脚本会停止且不把待处理条目标记为失败；保留 log\ai-note-keyword-update，充值或切换模型后继续同一个目录。
+- 如果本地 Zotero SQLite 尚未同步，优先用 --skip-done-tag 跳过已经打 workflow/keyword 的父条目；不要依赖直接改 zotero.sqlite。
+
+安全边界：
+- 读操作来自本地 SQLite；写 citationKey/tag 只通过 Zotero Web API。
+- 不直接写 zotero.sqlite，不删除 Zotero 本地库文件。
+- 失败、中断、等待复核或等待充值时不要清理 log\ai-note-keyword-update；只有确认全量完成并复核后才清理。
+- Web API 写入后需要 Zotero 同步，本地 SQLite 才能看到新 citationKey/tag；抽样验证优先读 Web API。
 ```
 
 ## Full Library RAG Incremental Index
